@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mongo="http://www.mulesoft.org/schema/mule/mongo" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/mongo http://www.mulesoft.org/schema/mule/mongo/current/mule-mongo.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <spring:beans>
+        <spring:bean id="Bean" name="books" class="java.util.HashMap"/>
+    </spring:beans>
+    <flow name="listBooks">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/book" allowedMethods="GET" doc:name="HTTP"/>
+        <set-payload value="#[app.registry['books'].values()]" doc:name="Set Payload"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="   Request made by: #[message.inboundProperties.username]" level="INFO" doc:name="Logger"/>
+    </flow>
+    <flow name="createBook">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/book" allowedMethods="POST" doc:name="HTTP"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[!app.registry['books'].containsKey(payload.id)]">
+                <expression-component doc:name="Expression"><![CDATA[Object book = new library.Book();
+book.setTitle(payload.get('title'));
+book.setAuthor(payload.get('author'));
+book.setPages(payload.get('pages'));
+book.setId(payload.get('id'));
+app.registry['books'].put(payload.get('id'),book);]]></expression-component>
+                <logger message="   Request made by: #[message.inboundProperties.username]" level="INFO" doc:name="Logger"/>
+            </when>
+            <otherwise>
+                <set-payload value="Error book with  id : #[payload.get('id')]" doc:name="Set Payload"/>
+                <logger message="   Request made by: #[message.inboundProperties.username]" level="INFO" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+    </flow>
+    <flow name="update">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/book" allowedMethods="PUT" doc:name="HTTP"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[app.registry['books'].containsKey(payload.id)]">
+                <expression-component doc:name="Expression"><![CDATA[Object book = new library.Book();
+book.setTitle(payload.get('title'));
+book.setAuthor(payload.get('author'));
+book.setPages(payload.get('pages'));
+book.setId(payload.get('id'));
+app.registry['books'].put(payload.get('id'),book);]]></expression-component>
+                <set-payload value="book with id: #[payload.id] updated." doc:name=" Payload"/>
+                <logger message="   Request made by: #[message.inboundProperties.username]" level="INFO" doc:name="Logger"/>
+            </when>
+            <otherwise>
+                <set-payload value="Book with id: #[payload.Id] not found" mimeType="application/json" doc:name="Payload"/>
+                <logger message="   Request made by: #[message.inboundProperties.username]" level="INFO" doc:name="Logger"/>
+            </otherwise>
+        </choice>
+    </flow>
+    <flow name="findByName">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/book/find" allowedMethods="POST" doc:name="HTTP"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <expression-component doc:name="Expression"><![CDATA[
+java.util.HashMap Map.Entry<Integer, library.Book > entry;
+for (java.util.HashMap Map.Entry<Integer, library.Book > entry : app.registry['books'].entrySet()) {
+    	if( entry.getTitle().equals(payload.name)){
+		return entry;
+	}
+}
+]]></expression-component>
+    </flow>
+    <flow name="deleteBookById">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/book" allowedMethods="DELETE" doc:name="HTTP"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="#[app.registry['books'].containsKey(payload.id)]">
+                <expression-component doc:name="Expression"><![CDATA[app.registry['books'].remove(payload.id);
+]]></expression-component>
+                <set-payload value="book with id: #[payload.id] deleted" doc:name="Set Payload"/>
+            </when>
+            <otherwise>
+                <set-payload value="Book with id: #[payload.Id] not found" mimeType="application/json" doc:name="Payload"/>
+            </otherwise>
+        </choice>
+    </flow>
+</mule>
